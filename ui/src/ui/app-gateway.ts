@@ -2,6 +2,7 @@ import {
   GATEWAY_EVENT_UPDATE_AVAILABLE,
   type GatewayUpdateAvailableEventPayload,
 } from "../../../src/gateway/events.js";
+import { parseAgentSessionKey } from "../../../src/sessions/session-key-utils.js";
 import { CHAT_SESSIONS_ACTIVE_MINUTES, flushChatQueueForEvent } from "./app-chat.ts";
 import type { EventLogEntry } from "./app-events.ts";
 import {
@@ -308,8 +309,17 @@ function handleTerminalChatEvent(
   return false;
 }
 
+function isHeartbeatSessionKey(sessionKey: string | undefined): boolean {
+  const raw = (sessionKey ?? "").trim().toLowerCase();
+  if (!raw) {
+    return false;
+  }
+  const scoped = parseAgentSessionKey(raw)?.rest ?? raw;
+  return scoped === "heartbeat" || scoped.startsWith("heartbeat:");
+}
+
 function handleChatGatewayEvent(host: GatewayHost, payload: ChatEventPayload | undefined) {
-  if (payload?.sessionKey) {
+  if (payload?.sessionKey && !isHeartbeatSessionKey(payload.sessionKey)) {
     setLastActiveSessionKey(
       host as unknown as Parameters<typeof setLastActiveSessionKey>[0],
       payload.sessionKey,

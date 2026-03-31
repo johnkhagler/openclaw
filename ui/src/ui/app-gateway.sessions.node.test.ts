@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 const loadSessionsMock = vi.fn();
+const setLastActiveSessionKeyMock = vi.fn();
 
 vi.mock("./app-chat.ts", () => ({
   CHAT_SESSIONS_ACTIVE_MINUTES: 10,
@@ -10,7 +11,7 @@ vi.mock("./app-settings.ts", () => ({
   applySettings: vi.fn(),
   loadCron: vi.fn(),
   refreshActiveTab: vi.fn(),
-  setLastActiveSessionKey: vi.fn(),
+  setLastActiveSessionKey: setLastActiveSessionKeyMock,
 }));
 vi.mock("./app-tool-stream.ts", () => ({
   handleAgentEvent: vi.fn(),
@@ -118,5 +119,69 @@ describe("handleGatewayEvent sessions.changed", () => {
 
     expect(loadSessionsMock).toHaveBeenCalledTimes(1);
     expect(loadSessionsMock).toHaveBeenCalledWith(host);
+  });
+});
+
+describe("handleGatewayEvent chat last-active session behavior", () => {
+  it("ignores heartbeat chat session keys when updating last active session", () => {
+    loadSessionsMock.mockReset();
+    setLastActiveSessionKeyMock.mockReset();
+    const host = createHost();
+
+    handleGatewayEvent(host, {
+      type: "event",
+      event: "chat",
+      payload: {
+        runId: "hb-run-1",
+        sessionKey: "agent:main:heartbeat",
+        state: "final",
+      },
+      seq: 2,
+    });
+
+    expect(setLastActiveSessionKeyMock).not.toHaveBeenCalled();
+  });
+
+  it("updates last active session for non-heartbeat chat session keys", () => {
+    loadSessionsMock.mockReset();
+    setLastActiveSessionKeyMock.mockReset();
+    const host = createHost();
+
+    handleGatewayEvent(host, {
+      type: "event",
+      event: "chat",
+      payload: {
+        runId: "proj-run-1",
+        sessionKey: "agent:main:project-alpha",
+        state: "final",
+      },
+      seq: 3,
+    });
+
+    expect(setLastActiveSessionKeyMock).toHaveBeenCalledTimes(1);
+    expect(setLastActiveSessionKeyMock).toHaveBeenCalledWith(host, "agent:main:project-alpha");
+  });
+
+  it("does not treat non-heartbeat scopes containing heartbeat as heartbeat sessions", () => {
+    loadSessionsMock.mockReset();
+    setLastActiveSessionKeyMock.mockReset();
+    const host = createHost();
+
+    handleGatewayEvent(host, {
+      type: "event",
+      event: "chat",
+      payload: {
+        runId: "proj-run-2",
+        sessionKey: "agent:main:project-heartbeat-review",
+        state: "final",
+      },
+      seq: 4,
+    });
+
+    expect(setLastActiveSessionKeyMock).toHaveBeenCalledTimes(1);
+    expect(setLastActiveSessionKeyMock).toHaveBeenCalledWith(
+      host,
+      "agent:main:project-heartbeat-review",
+    );
   });
 });
