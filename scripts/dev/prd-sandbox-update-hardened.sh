@@ -201,7 +201,26 @@ fi
 run openshell forward list
 
 log "Gate 4 acceptance"
-run sh -c "curl -sS -m 10 -D - http://127.0.0.1:${FORWARD_PORT}/ | head -n 12"
+http_ok="0"
+for attempt in 1 2 3 4 5; do
+  log "HTTP acceptance attempt ${attempt}/5"
+  set +e
+  HTTP_HEADERS="$(curl -sS -m 10 -D - -o /dev/null "http://127.0.0.1:${FORWARD_PORT}/")"
+  CURL_STATUS="$?"
+  set -e
+  printf '%s\n' "$HTTP_HEADERS" | head -n 12 | tee -a "$LOG_FILE"
+  if [[ "$CURL_STATUS" -eq 0 ]] && printf '%s\n' "$HTTP_HEADERS" | grep -q '^HTTP/1.1 200'; then
+    http_ok="1"
+    break
+  fi
+  sleep 2
+done
+
+if [[ "$http_ok" != "1" ]]; then
+  log "HTTP acceptance failed: did not observe HTTP/1.1 200 after retries"
+  exit 1
+fi
+
 run pnpm openclaw channels status --probe
 run pnpm openclaw models list
 
